@@ -1,0 +1,9 @@
+data:
+  dataset: mnist
+  split:
+    train:
+      - train
+    val:
+      - val
+    test:
+      - val
