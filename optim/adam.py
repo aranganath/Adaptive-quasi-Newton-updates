@@ -351,7 +351,6 @@ def _single_tensor_quasiadam(params: List[Tensor],
                         first: bool):
 
     assert grad_scale is None and found_inf is None
-
     for i, param in enumerate(params):
 
         grad = grads[i] if not maximize else -grads[i]
@@ -388,23 +387,23 @@ def _single_tensor_quasiadam(params: List[Tensor],
         # Replace exp_avg_sq ####
         #########################
         si = param - prev_params[i]
+        
         yi = exp_avg - prev_grads[i]
+
         exp_avg_sq.mul_(beta2).addcmul_(grad, grad.conj(), value=1 - beta2)
-        if step_t > 1:
+        if step_t > 1 and si.dot(yi) > 0:
             # Compute the entire l-bfgs step
-            
             w = si.reshape(-1).dot(yi.reshape(-1))
             # Now let's compute the entries of the different parts of the matrix
             alpha = yi.reshape(-1).dot(si.reshape(-1))/yi.reshape(-1).dot(yi.reshape(-1))
             M11 = 1/(w)**2*(w + alpha*yi.reshape(-1).dot(yi.reshape(-1)))
             M12 = -1/w
-            # value= (si.reshape(-1)**2 *M11 + 2*alpha*M12*yi.reshape(-1)*si.reshape(-1))*grad.reshape(-1)
-            # lbfgs_step = value.view_as(param)
             sg = si.reshape(-1).dot(exp_avg.reshape(-1))
             yg = alpha*yi.reshape(-1).dot(exp_avg.reshape(-1))
             TE = M11*sg + M12*yg
             BE = M12*(sg)
-            value = si.reshape(-1)* TE + alpha*yi.reshape(-1)
+            value = si.reshape(-1)* TE + alpha*yi.reshape(-1)*BE
+            value = alpha*exp_avg + value
             lbfgs_step = value.view_as(param)
 
 
@@ -454,8 +453,8 @@ def _single_tensor_quasiadam(params: List[Tensor],
             else:
                 denom = (exp_avg_sq.sqrt() / bias_correction2_sqrt).add_(eps)
             
-            if step_t > 1:
-                param.addcdiv_(lbfgs_step, denom, value=-step_size)
+            if step_t > 1 and si.dot(yi) > 0:
+                param.add_(lbfgs_step, alpha=-step_size)
             else:
                 param.addcdiv_(exp_avg, denom, value=-step_size)
         
